@@ -19,7 +19,8 @@ members=["framework",
         "test/tcp_reconstruction",
         "test/acl-fw",
         "test/embedded-scheduler-test",
-        "test/embedded-scheduler-dependency-test"]
+        "test/embedded-scheduler-dependency-test",
+        "test/synflood"]
 [profile.release]
 opt-level = 3
 lto = true
