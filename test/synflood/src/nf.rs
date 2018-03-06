@@ -2,12 +2,12 @@ use e2d2::headers::*;
 use e2d2::operators::*;
 use e2d2::utils::{Flow, Ipv4Prefix};
 use fnv::FnvHasher;
-use std::collections::HashSet;
+//use std::collections::HashSet;
 use std::hash::BuildHasherDefault;
 use std::time::{Duration, SystemTime};
 use std::collections::HashMap;
 
-type FnvHash = BuildHasherDefault<FnvHasher>;
+//type FnvHash = BuildHasherDefault<FnvHasher>;
 
 pub struct Hashinfo {
     pub count: u32,
@@ -49,7 +49,7 @@ pub struct Acl {
 }
 
 impl Acl {
-    pub fn matches(&self, flow: &Flow, connections: HashMap<&Flow, Hashinfo>) -> bool {
+    pub fn matches(&self, flow: &Flow, connections: &HashMap<Flow, Hashinfo>) -> bool {
         if (self.src_ip.is_none() || self.src_ip.unwrap().in_range(flow.src_ip))
             && (self.dst_ip.is_none() || self.dst_ip.unwrap().in_range(flow.dst_ip))
             && (self.src_port.is_none() || flow.src_port == self.src_port.unwrap())
@@ -81,7 +81,7 @@ impl Acl {
 }
 
 pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<Acl>) -> CompositionBatch {
-    let mut flow_cache: HashMap<&Flow,Hashinfo> = HashMap::new();
+    let mut flow_cache: HashMap<Flow,Hashinfo> = HashMap::new();
     parent
         .parse::<MacHeader>()
         .transform(box move |p| {
@@ -92,18 +92,25 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
             let flow = p.get_header().flow().unwrap();
 
             for acl in &acls {
-                if acl.matches(&flow, flow_cache) {
+                if acl.matches(&flow, &flow_cache) {
                     if !acl.drop {
-                        match flow_cache.get(&flow) {
-                            Some(h) => h.increment_count(),
-                            None => {
-                                let mut hashinfo = Hashinfo {
-                                    count: 1,
-                                    epoch: SystemTime::now(),
-                                };
-                                flow_cache.insert(&flow,hashinfo);
-                            }
-                        };
+                        if flow_cache.contains_key(&flow) {
+                            flow_cache.get_mut(&flow).unwrap().increment_count();
+                        } else {
+                            let mut hashinfo = Hashinfo {
+                                count: 1,
+                                epoch: SystemTime::now(),
+                            };
+                            flow_cache.insert(flow,hashinfo);
+                        }
+                        //    Some(h) => h.increment_count(),
+                        //    None => {
+                        //        let mut hashinfo = Hashinfo {
+                        //            count: 1,
+                        //            epoch: SystemTime::now(),
+                        //        };
+                        //    }
+                        
                     }
                     return !acl.drop;
                 }
