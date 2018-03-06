@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 //type FnvHash = BuildHasherDefault<FnvHasher>;
 
+#[derive(Debug)]
 pub struct Hashinfo {
     pub count: u32,
     pub epoch: SystemTime,
@@ -56,9 +57,16 @@ impl Acl {
             && (self.dst_port.is_none() || flow.dst_port == self.dst_port.unwrap())
             //&& (connections.get(&flow).get_count() > 1 && self.threshold <= connections.get(&flow).get_rate())
         {
+            //println!("Flow: {:?}", &flow);
+            //println!("ACL matches");
+            println!("Connections: {:#?}", connections);
             if let Some(h) = connections.get(&flow) {
+                //println!("Count: {}",h.get_count());
+                //println!("Hashinfo: {:?}", &h);
                 if let Some(thres) = self.threshold {
-                    if h.get_count() > &1 && thres <= h.get_rate() {
+                    //println!("Threshold: {}",thres);
+                    //println!("Rate: {}",h.get_rate());
+                    if h.get_count() >= &1 && thres >= h.get_rate() {
                         if let Some(established) = self.established {
                             let rev_flow = flow.reverse_flow();
                             (connections.contains_key(&flow) || connections.contains_key(&rev_flow)) == established
@@ -66,15 +74,19 @@ impl Acl {
                             true
                         }
                     } else {
+                        //println!("False1");
                         false
                     }
                 } else {
+                    //println!("False2");
                     false
                 }
             } else {
-                false
+                //println!("False3");
+                true
             }
         } else {
+            //println!("False4");
             false
         }
     }
@@ -95,6 +107,7 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
                 if acl.matches(&flow, &flow_cache) {
                     if !acl.drop {
                         if flow_cache.contains_key(&flow) {
+                            println!("************************Hash contains flow*********************");
                             flow_cache.get_mut(&flow).unwrap().increment_count();
                         } else {
                             let mut hashinfo = Hashinfo {
