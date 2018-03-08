@@ -20,7 +20,8 @@ members=["framework",
         "test/acl-fw",
         "test/embedded-scheduler-test",
         "test/embedded-scheduler-dependency-test",
-        "test/synflood"]
+        "test/synflood",
+	"test/ddosdetector"]
 [profile.release]
 opt-level = 3
 lto = true

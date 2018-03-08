@@ -21,6 +21,7 @@ export examples=(
         #test/embedded-scheduler-dependency-test
         #test/tcp_payload
         #test/macswap
-	test/synflood
+	#test/synflood
+	test/ddosdetector
 )
 

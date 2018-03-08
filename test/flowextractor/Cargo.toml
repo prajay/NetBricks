@@ -1,0 +1,16 @@
+[package]
+name = "flowextractor"
+version = "0.1.0"
+authors = ["jayanth <jayanthkalyanasundaram@gmail.com>"]
+
+[dependencies]
+netflow_v9 = { git = "https://github.com/Caspinol/netflow_v9.git" }
+e2d2 = { path = "../../framework", features = ["performance"] }
+time = ">=0.1.0"
+getopts = "*"
+rand = "0.3"
+fnv = "*"
+
+[features]
+default = []
+print = []
