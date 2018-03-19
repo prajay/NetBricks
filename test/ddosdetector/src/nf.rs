@@ -1,7 +1,7 @@
 use e2d2::headers::*;
 use e2d2::operators::*;
-use e2d2::utils::{Flow, Ipv4Prefix};
-use fnv::FnvHasher;
+use e2d2::utils::{Flow,Ipv4Prefix};
+//use fnv::FnvHasher;
 //use std::collections::HashSet;
 use std::hash::BuildHasherDefault;
 use std::time::{Duration, SystemTime};
@@ -13,10 +13,12 @@ use std::collections::HashMap;
 pub struct Hashinfo {
     pub count: u32,
     pub epoch: SystemTime,
-    pub length: u16,
+    pub totallength: u32,
+    pub meanlength: u32,
     pub tos: u8,
-    pub protocol: u8,
-    pub drop_counter: u32,
+    pub ttl: u8,
+    pub tcpflags: Option<u8>,
+    pub ipflags: u8,
 }
 
 impl Hashinfo {
@@ -38,6 +40,24 @@ impl Hashinfo {
 
     pub fn get_count(&self) -> &u32 {
         &self.count
+    }
+
+    pub fn increment_length(&mut self, len: u16) {
+        self.totallength += len as u32;
+    }
+
+    pub fn update_meanlength(&mut self) {
+        self.meanlength = self.totallength / self.count;
+    }
+
+    pub fn increment_details(&mut self, len: u16) {
+        self.increment_count();
+        self.increment_length(len);
+        self.update_meanlength();
+    }
+
+    pub fn set_tcpflags(&mut self, tcpflags: u8) {
+        self.tcpflags = Some(tcpflags);
     }
 }
 
@@ -98,15 +118,22 @@ impl Acl {
 
 pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<Acl>) -> CompositionBatch {
     let mut flow_cache: HashMap<Flow,Hashinfo> = HashMap::new();
-    //let mut tcp_flags: u8 = 0;
+    let mut flow: Flow = Flow {
+        src_ip: 0,
+        dst_ip: 0,
+        src_port: 0,
+        dst_port: 0,
+        proto: 0,
+    };
+    
     parent
         .parse::<MacHeader>()
         .transform(box move |p| {
-            //p.get_mut_header().swap_addresses();
+            p.get_mut_header().swap_addresses();
         })
         .parse::<IpHeader>()
         .filter(box move |p| {
-            let flow = p.get_header().flow().unwrap();
+            flow = p.get_header().flow().unwrap();
            // println!("length: {:#?}", p.get_header().length());`
            // println!("ecn: {:#?}", p.get_header().ecn());
            // println!("dscp: {:#?}", p.get_header().dscp());
@@ -117,13 +144,17 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
                     if !acl.drop {
                         if flow_cache.contains_key(&flow) {
                             println!("************************Hash contains flow*********************");
-                            flow_cache.get_mut(&flow).unwrap().increment_count();
+                            flow_cache.get_mut(&flow).unwrap().increment_details(p.get_header().length());
                         } else {
                             let mut hashinfo = Hashinfo {
                                 count: 1,
                                 epoch: SystemTime::now(),
-                                length: p.get_header().length(),
+                                totallength: p.get_header().length() as u32,
+                                meanlength: (p.get_header().length() / 1) as u32,
                                 tos: (p.get_header().dscp() << 2) | p.get_header().ecn(),
+                                ttl: p.get_header().ttl(),
+                                ipflags: p.get_header().flags(),
+                                tcpflags: None,
                             };
                             flow_cache.insert(flow,hashinfo);
                         }
@@ -141,12 +172,9 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
             }
             return false;
         })
-        //.parse::<TcpHeader>()
+        .parse::<TcpHeader>()
         //.map(box move |p| {
-        //    tcp_flags = p.get_header().flags;
-        //})
-        //.filter(box move |p| {
-
+        //    flow_cache.get_mut(&flow).unwrap().set_tcpflags(p.get_header().flags());
         //})
         .compose()
 }
