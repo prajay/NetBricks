@@ -62,8 +62,8 @@ impl Hashinfo {
         &self.count
     }
 
-    pub fn increment_length(&mut self, len: u16) {
-        self.totallength += len as u32;
+    pub fn increment_length(&mut self, len: u32) {
+        self.totallength += len;
     }
 
     pub fn update_meanlength(&mut self) {
@@ -78,7 +78,7 @@ impl Hashinfo {
         self.ttl = ( self.ttl * (self.count - 1) + ttl ) / self.count;
     }
 
-    pub fn increment_details(&mut self, len: u16, ttl: u32) {
+    pub fn increment_details(&mut self, len: u32, ttl: u32) {
         self.increment_count();
         self.increment_length(len);
         self.update_meanlength();
@@ -161,8 +161,31 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
             p.get_mut_header().swap_addresses();
         })
         .parse::<IpHeader>()
-        .filter(box move |p| {
+        .metadata(box move |p| {
+            let epoch = SystemTime::now();
+            let totallength = p.get_header().length() as u32;
+            let meanlength = (p.get_header().length() / 1) as u32;
+            let tos = (p.get_header().dscp() << 2) | p.get_header().ecn();
+            let ttl = p.get_header().ttl() as u32;
+            let ipflags = p.get_header().flags();
+            let tcpflags = 0 as u32;
             flow = p.get_header().flow().unwrap();
+
+            (epoch, totallength, meanlength, tos, ttl, ipflags, tcpflags)
+            //flow
+        })
+        .parse::<TcpHeader>()
+        .metadata(box move |p| {
+            let &(epoch, totallength, meanlength, tos, ttl, ipflags,mut tcpflags) = p.read_metadata();
+            //let flow = p.read_metadata();
+            tcpflags = *p.get_header().getflags() as u32;
+
+            (epoch, totallength, meanlength, tos, ttl, ipflags, tcpflags)
+            //flow
+        })
+        .filter(box move |p| {
+            let &(epoch, totallength, meanlength, tos, ttl, ipflags, tcpflags) = p.read_metadata();
+            //let flow = p.read_metadata();
            // println!("length: {:#?}", p.get_header().length());`
            // println!("ecn: {:#?}", p.get_header().ecn());
            // println!("dscp: {:#?}", p.get_header().dscp());
@@ -175,18 +198,18 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
                         Entry::Occupied(mut e) => {
                             let entry = e.get_mut();
                             println!("************************Hash contains flow*********************");
-                            entry.increment_details(p.get_header().length(),p.get_header().ttl() as u32);
+                            entry.increment_details(totallength,ttl as u32);
                         }
                         Entry::Vacant(e) => {
                             let mut hashinfo = Hashinfo {
                                 count: 1,
-                                epoch: SystemTime::now(),
-                                totallength: p.get_header().length() as u32,
-                                meanlength: (p.get_header().length() / 1) as u32,
-                                tos: (p.get_header().dscp() << 2) | p.get_header().ecn(),
-                                ttl: p.get_header().ttl() as u32,
-                                ipflags: p.get_header().flags(),
-                                tcpflags: 0,
+                                epoch: epoch,
+                                totallength: totallength as u32,
+                                meanlength: meanlength,
+                                tos: tos,
+                                ttl: ttl,
+                                ipflags: ipflags,
+                                tcpflags: tcpflags,
                             };
                             e.insert(hashinfo);
                         }
@@ -204,21 +227,6 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
             }
         }
             return false;
-        })
-        .metadata(box move |p| {
-            let flow = p.get_header().flow().unwrap();
-            flow
-        })
-        .parse::<TcpHeader>()
-        .transform(box move |p| {
-            let flow = p.read_metadata();
-            match flow_cache.entry(*flow) {
-                Entry::Occupied(mut e) => {
-                    e.get_mut().increment_details_tcp(p.get_header().getflags());
-                }
-                Entry::Vacant(e)=>{}
-            }
-            //flow_cache.get_mut(&flow).unwrap().set_tcpflags(p.get_header().flags());
         })
         .compose()
 }
