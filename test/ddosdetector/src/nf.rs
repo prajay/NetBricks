@@ -6,19 +6,39 @@ use e2d2::utils::{Flow,Ipv4Prefix};
 use std::hash::BuildHasherDefault;
 use std::time::{Duration, SystemTime};
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 //type FnvHash = BuildHasherDefault<FnvHasher>;
 
+
+
+
 #[derive(Debug)]
+//#[derive(Default)]
 pub struct Hashinfo {
     pub count: u32,
     pub epoch: SystemTime,
     pub totallength: u32,
     pub meanlength: u32,
     pub tos: u8,
-    pub ttl: u8,
-    pub tcpflags: Option<u8>,
+    pub ttl: u32,
+    pub tcpflags: u32,
     pub ipflags: u8,
+}
+
+impl Default for Hashinfo{
+    fn default() -> Hashinfo {
+        Hashinfo {
+            count: 0,
+            epoch: SystemTime::now(),
+            totallength: 0,
+            meanlength: 0,
+            tos: 0,
+            ttl: 0,
+            tcpflags: 0,
+            ipflags: 0,
+        }
+    }
 }
 
 impl Hashinfo {
@@ -50,14 +70,23 @@ impl Hashinfo {
         self.meanlength = self.totallength / self.count;
     }
 
-    pub fn increment_details(&mut self, len: u16) {
+    pub fn set_tcpflags(&mut self, tcpflags: &u8) {
+        self.tcpflags = self.tcpflags | *tcpflags as u32;
+    }
+
+    pub fn update_ttl(&mut self, ttl: u32){
+        self.ttl = ( self.ttl * (self.count - 1) + ttl ) / self.count;
+    }
+
+    pub fn increment_details(&mut self, len: u16, ttl: u32) {
         self.increment_count();
         self.increment_length(len);
         self.update_meanlength();
+        self.update_ttl(ttl);
     }
 
-    pub fn set_tcpflags(&mut self, tcpflags: u8) {
-        self.tcpflags = Some(tcpflags);
+    pub fn increment_details_tcp(&mut self, tcpflags :&u8){
+        self.set_tcpflags(tcpflags);
     }
 }
 
@@ -125,7 +154,7 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
         dst_port: 0,
         proto: 0,
     };
-    
+
     parent
         .parse::<MacHeader>()
         .transform(box move |p| {
@@ -142,21 +171,24 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
             for acl in &acls {
                 if acl.matches(&flow, &flow_cache) {
                     if !acl.drop {
-                        if flow_cache.contains_key(&flow) {
+                        match flow_cache.entry(flow) {
+                        Entry::Occupied(mut e) => {
+                            let entry = e.get_mut();
                             println!("************************Hash contains flow*********************");
-                            flow_cache.get_mut(&flow).unwrap().increment_details(p.get_header().length());
-                        } else {
+                            entry.increment_details(p.get_header().length(),p.get_header().ttl() as u32);
+                        }
+                        Entry::Vacant(e) => {
                             let mut hashinfo = Hashinfo {
                                 count: 1,
                                 epoch: SystemTime::now(),
                                 totallength: p.get_header().length() as u32,
                                 meanlength: (p.get_header().length() / 1) as u32,
                                 tos: (p.get_header().dscp() << 2) | p.get_header().ecn(),
-                                ttl: p.get_header().ttl(),
+                                ttl: p.get_header().ttl() as u32,
                                 ipflags: p.get_header().flags(),
-                                tcpflags: None,
+                                tcpflags: 0,
                             };
-                            flow_cache.insert(flow,hashinfo);
+                            e.insert(hashinfo);
                         }
                         //    Some(h) => h.increment_count(),
                         //    None => {
@@ -165,16 +197,28 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
                         //            epoch: SystemTime::now(),
                         //        };
                         //    }
-                        
+
                     }
                     return !acl.drop;
                 }
             }
+        }
             return false;
         })
+        .metadata(box move |p| {
+            let flow = p.get_header().flow().unwrap();
+            flow
+        })
         .parse::<TcpHeader>()
-        //.map(box move |p| {
-        //    flow_cache.get_mut(&flow).unwrap().set_tcpflags(p.get_header().flags());
-        //})
+        .transform(box move |p| {
+            let flow = p.read_metadata();
+            match flow_cache.entry(*flow) {
+                Entry::Occupied(mut e) => {
+                    e.get_mut().increment_details_tcp(p.get_header().getflags());
+                }
+                Entry::Vacant(e)=>{}
+            }
+            //flow_cache.get_mut(&flow).unwrap().set_tcpflags(p.get_header().flags());
+        })
         .compose()
 }

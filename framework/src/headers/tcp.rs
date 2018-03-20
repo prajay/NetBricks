@@ -88,6 +88,10 @@ impl EndOffset for TcpHeader {
 
 impl TcpHeader {
     #[inline]
+    pub fn getflags(&self) -> &u8 {
+        &self.flags
+    }
+    #[inline]
     pub fn new() -> TcpHeader {
         Default::default()
     }

@@ -24,4 +24,3 @@ export examples=(
 	#test/synflood
 	test/ddosdetector
 )
-
