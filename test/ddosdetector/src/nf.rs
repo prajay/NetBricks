@@ -7,7 +7,7 @@ use std::hash::BuildHasherDefault;
 use std::time::{Duration, SystemTime};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-
+use rulinalg::utils;
 //type FnvHash = BuildHasherDefault<FnvHasher>;
 
 
@@ -70,8 +70,12 @@ impl Hashinfo {
         self.meanlength = self.totallength / self.count;
     }
 
-    pub fn set_tcpflags(&mut self, tcpflags: &u8) {
-        self.tcpflags = self.tcpflags | *tcpflags as u32;
+    pub fn set_tcpflags(&mut self, tcpflags: u32) {
+        self.tcpflags = self.tcpflags | tcpflags;
+    }
+
+    pub fn set_tos(&mut self, tos: u8) {
+        self.tos = tos;
     }
 
     pub fn update_ttl(&mut self, ttl: u32){
@@ -85,7 +89,7 @@ impl Hashinfo {
         self.update_ttl(ttl);
     }
 
-    pub fn increment_details_tcp(&mut self, tcpflags :&u8){
+    pub fn increment_details_tcp(&mut self, tcpflags :u32){
         self.set_tcpflags(tcpflags);
     }
 }
@@ -147,6 +151,7 @@ impl Acl {
 
 pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<Acl>) -> CompositionBatch {
     let mut flow_cache: HashMap<Flow,Hashinfo> = HashMap::new();
+    let mut tos_map: HashMap<Flow, [u8; 256]> = HashMap::new();
     let mut flow: Flow = Flow {
         src_ip: 0,
         dst_ip: 0,
@@ -199,6 +204,7 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
                             let entry = e.get_mut();
                             println!("************************Hash contains flow*********************");
                             entry.increment_details(totallength,ttl as u32);
+                            entry.increment_details_tcp(tcpflags);
                         }
                         Entry::Vacant(e) => {
                             let mut hashinfo = Hashinfo {
@@ -221,6 +227,24 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
                         //        };
                         //    }
 
+                    }
+
+                    match tos_map(flow) {
+                        Entry::Occupied(mut e) => {
+                            let entry = e.get_mut();
+                            entry[tos] += 1;
+                            let mut max: u32 = utils::argmax(&entry);
+                            entry.set_tos(max);
+                        }
+                        Entry::Vacant(e) => {
+                            let mut arr: [u8; 256] = [0; 256];
+                            arr[tos] += 1;
+                            //let mut max: u32 = utils::argmax(&entry);
+                            e.insert(arr);
+                            let entry = e.get_mut();
+                            let mut max: u32 = utils::argmax(&entry);
+                            entry.set_tos(max);
+                        }
                     }
                     return !acl.drop;
                 }
