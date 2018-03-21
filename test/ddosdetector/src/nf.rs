@@ -229,21 +229,21 @@ pub fn acl_match<T: 'static + Batch<Header = NullHeader>>(parent: T, acls: Vec<A
 
                     }
 
-                    match tos_map(flow) {
+                    match tos_map.entry(flow) {
                         Entry::Occupied(mut e) => {
-                            let entry = e.get_mut();
-                            entry[tos] += 1;
-                            let mut max: u32 = utils::argmax(&entry);
-                            entry.set_tos(max);
+                            let mut entry = e.get_mut();
+                            entry[tos as usize] += 1;
+                            let mut max: u8 = utils::argmax(&entry[..]).0 as u8;
+                            flow_cache.get_mut(&flow).unwrap().set_tos(max);
                         }
                         Entry::Vacant(e) => {
                             let mut arr: [u8; 256] = [0; 256];
-                            arr[tos] += 1;
+                            arr[tos as usize] += 1;
                             //let mut max: u32 = utils::argmax(&entry);
                             e.insert(arr);
-                            let entry = e.get_mut();
-                            let mut max: u32 = utils::argmax(&entry);
-                            entry.set_tos(max);
+                            //let entry = e.get_mut();
+                            let mut max: u8 = tos;
+                            flow_cache.get_mut(&flow).unwrap().set_tos(max);
                         }
                     }
                     return !acl.drop;

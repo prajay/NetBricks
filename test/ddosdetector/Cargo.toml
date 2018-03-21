@@ -10,6 +10,7 @@ getopts = "*"
 rand = "0.3"
 fnv = "*" 
 twox-hash = "*" 
+rulinalg = "0.4.2"
 
 [features]
 default = []

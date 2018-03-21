@@ -1,11 +1,13 @@
 #![feature(box_syntax)]
 #![feature(asm)]
 #![feature(duration_extras)]
+#[macro_use]
 extern crate e2d2;
 extern crate fnv;
 extern crate getopts;
 extern crate rand;
 extern crate time;
+extern crate rulinalg;
 use self::nf::*;
 use e2d2::allocators::CacheAligned;
 use e2d2::config::*;
